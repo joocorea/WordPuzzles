@@ -86,9 +86,13 @@
   * 프로젝트: `WordPuzzles` (`wordpuzzles-68e5b`)
   * 라이브 웹 URL: https://wordpuzzles-68e5b.web.app
   * 모바일, 태블릿, PC 어디서든 즉시 접속 가능
+* [x] **GitHub 원격 저장소 연동 및 푸시 완료 (100% 완료)**:
+  * 레포지토리: https://github.com/joocorea/WordPuzzles.git (`main` 브랜치)
+  * 소스코드 및 문서 버전 관리 완비
 
 ## 📝 남은 과제 (TODO)
 * [x] 01단계 ~ 42단계 퍼즐 전면 교정 및 레이아웃 검수 완료 (100% 완료)
 * [x] 사운드 효과 시스템 (효과음 & 팡파레) 구현 완료 (100% 완료)
 * [x] Firebase Hosting 라이브 서버 배포 완료 (100% 완료)
+* [x] GitHub 원격 레포지토리 푸시 완료 (100% 완료)
 * [ ] (선택) 이전 퍼즐 기록 저장 기능 (로컬 스토리지 또는 DB 연동)
