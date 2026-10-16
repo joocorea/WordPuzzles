@@ -41,7 +41,7 @@ export const levels = [
     words: [
       { id: '1a', num: 1, direction: "across", row: 0, col: 1, answer: "태풍", clue: "큰비를 내리며 부는 매우 센 바람." },
       { id: '1d', num: 1, direction: "down",   row: 0, col: 1, answer: "태극기", clue: "대한민국의 국기. [예] ㅌㄱㄱ가 바람에 펄럭입니다." },
-      { id: '2a', num: 2, direction: "across", row: 2, col: 4, answer: "꾸러미", clue: "꾸리어 싼 물건. [예] 달걀 한 ㄱㄹㅁ" },
+      { id: '2a', num: 2, direction: "across", row: 2, col: 4, answer: "꾸러미", clue: "꾸리어 싼 물건. [예] 달걀 한 ㄲㄹㅁ" },
       { id: '3d', num: 3, direction: "down",   row: 2, col: 6, answer: "미세먼지", clue: "눈에 보이지 않을 정도로 아주 작은 먼지." },
       { id: '4a', num: 4, direction: "across", row: 3, col: 2, answer: "낙엽", clue: "말라서 떨어진 나뭇잎. [예] 가을에는 ㄴㅇ이 진다." },
       { id: '5a', num: 5, direction: "across", row: 4, col: 0, answer: "시계", clue: "시각을 나타내는 기계." },

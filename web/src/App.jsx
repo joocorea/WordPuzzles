@@ -64,12 +64,42 @@ function App() {
     setGrid(newGrid);
   }, [currentLevelIdx, puzzleData]);
 
+  // 단어 내 다음/이전 칸으로 자동 포커스 이동 처리 (모바일 연속 타이핑 편의 기능)
+  const moveToNextCell = (r, c, step) => {
+    if (!selectedWord) return;
+    const len = selectedWord.answer.length;
+    let curIdx = -1;
+    for (let i = 0; i < len; i++) {
+      const cr = selectedWord.direction === 'across' ? selectedWord.row : selectedWord.row + i;
+      const cc = selectedWord.direction === 'across' ? selectedWord.col + i : selectedWord.col;
+      if (cr === r && cc === c) {
+        curIdx = i;
+        break;
+      }
+    }
+    if (curIdx !== -1) {
+      const nextIdx = curIdx + step;
+      if (nextIdx >= 0 && nextIdx < len) {
+        const nextR = selectedWord.direction === 'across' ? selectedWord.row : selectedWord.row + nextIdx;
+        const nextC = selectedWord.direction === 'across' ? selectedWord.col + nextIdx : selectedWord.col;
+        const nextEl = document.getElementById(`cell-input-${nextR}-${nextC}`);
+        if (nextEl) {
+          nextEl.focus();
+        }
+      }
+    }
+  };
+
   const handleInputChange = (r, c, val) => {
     const char = val.slice(-1); 
     if (char) {
       sound.playTap();
+      // 글자 입력 시 같은 단어의 다음 칸으로 포커스 자동 이동
+      if (selectedWord) {
+        setTimeout(() => moveToNextCell(r, c, 1), 10);
+      }
     }
-    setInputs({ ...inputs, [`${r}-${c}`]: char });
+    setInputs(prev => ({ ...prev, [`${r}-${c}`]: char }));
     setWrongCells(prev => {
       if (prev[`${r}-${c}`]) {
         const next = { ...prev };
@@ -78,6 +108,14 @@ function App() {
       }
       return prev;
     });
+  };
+
+  const handleKeyDown = (e, r, c) => {
+    if (e.key === 'Backspace' && (!inputs[`${r}-${c}`] || inputs[`${r}-${c}`] === '')) {
+      if (selectedWord) {
+        moveToNextCell(r, c, -1);
+      }
+    }
   };
 
   // 퍼즐 칸 클릭 또는 포커스 시 가로/세로 단어 선택 및 교차점 토글 처리
@@ -229,18 +267,11 @@ function App() {
   if (currentView === 'map') {
     return (
       <div className="app-container">
-        <header className="header no-print" style={{ justifyContent: 'space-between', marginBottom: '1rem' }}>
-          <div className="header-title">
+        <header className="header no-print" style={{ justifyContent: 'center', marginBottom: '1rem' }}>
+          <div className="header-title" style={{ justifyContent: 'center' }}>
             <img src="/mascot.png" alt="부캉이" className="mascot-img" />
             <h1>낱말 퍼즐 모험 🗺️</h1>
           </div>
-          <button 
-            className="sound-btn" 
-            onClick={toggleSound} 
-            title={isMuted ? "소리 켜기" : "소리 끄기"}
-          >
-            {isMuted ? "🔇 소리 끔" : "🔊 소리 켬"}
-          </button>
         </header>
         <div className="level-map">
           {levels.map((lvl, idx) => (
@@ -400,12 +431,18 @@ function App() {
                     {cell && cell.number && <span className={`cell-number ${cell.direction}`}>{cell.number}</span>}
                     {cell && (
                       <input
+                        id={`cell-input-${r}-${c}`}
                         type="text"
+                        inputMode="text"
+                        autoComplete="off"
+                        autoCorrect="off"
+                        spellCheck="false"
                         className={wrongCells[`${r}-${c}`] ? 'wrong' : ''}
                         maxLength={1}
                         value={inputs[`${r}-${c}`] || ''}
                         onFocus={() => handleCellClick(r, c, cell)}
                         onChange={(e) => handleInputChange(r, c, e.target.value)}
+                        onKeyDown={(e) => handleKeyDown(e, r, c)}
                       />
                     )}
                   </div>
