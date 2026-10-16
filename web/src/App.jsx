@@ -1,8 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import './App.css';
 import { levels } from './puzzleData';
 import { sound } from './sound';
+
+// 한글 완성형 음절 (가~힣) 여부 판별
+const isHangulComplete = (char) => {
+  if (!char) return false;
+  const code = char.charCodeAt(0);
+  return code >= 0xac00 && code <= 0xd7a3;
+};
+
+// 한글 받침(종성) 포함 여부 판별
+const hasBatchim = (char) => {
+  if (!isHangulComplete(char)) return false;
+  return (char.charCodeAt(0) - 0xac00) % 28 > 0;
+};
 
 const PASTEL_COLORS = [
   '#e8f5e9', // Light green
@@ -26,6 +39,7 @@ function App() {
   const [isChecked, setIsChecked] = useState(false);
   const [emptyColor, setEmptyColor] = useState(PASTEL_COLORS[0]);
   const [isMuted, setIsMuted] = useState(false);
+  const timerRef = useRef(null);
 
   const toggleSound = () => {
     const muted = sound.toggleMute();
@@ -34,8 +48,20 @@ function App() {
 
   const puzzleData = levels[currentLevelIdx];
 
+  const clearWrongCell = (r, c) => {
+    setWrongCells(prev => {
+      if (prev[`${r}-${c}`]) {
+        const next = { ...prev };
+        delete next[`${r}-${c}`];
+        return next;
+      }
+      return prev;
+    });
+  };
+
   useEffect(() => {
     // 단계 변경 시 입력값 및 선택 상태 초기화
+    if (timerRef.current) clearTimeout(timerRef.current);
     setInputs({});
     setWrongCells({});
     setSelectedWord(null);
@@ -65,7 +91,7 @@ function App() {
   }, [currentLevelIdx, puzzleData]);
 
   // 단어 내 다음/이전 칸으로 자동 포커스 이동 처리 (모바일 연속 타이핑 편의 기능)
-  const moveToNextCell = (r, c, step) => {
+  const moveToNextCell = (r, c, step, initialVal = null) => {
     if (!selectedWord) return;
     const len = selectedWord.answer.length;
     let curIdx = -1;
@@ -82,6 +108,12 @@ function App() {
       if (nextIdx >= 0 && nextIdx < len) {
         const nextR = selectedWord.direction === 'across' ? selectedWord.row : selectedWord.row + nextIdx;
         const nextC = selectedWord.direction === 'across' ? selectedWord.col + nextIdx : selectedWord.col;
+        
+        if (initialVal) {
+          setInputs(prev => ({ ...prev, [`${nextR}-${nextC}`]: initialVal }));
+          clearWrongCell(nextR, nextC);
+        }
+
         const nextEl = document.getElementById(`cell-input-${nextR}-${nextC}`);
         if (nextEl) {
           nextEl.focus();
@@ -91,29 +123,81 @@ function App() {
   };
 
   const handleInputChange = (r, c, val) => {
-    const char = val.slice(-1); 
-    if (char) {
-      sound.playTap();
-      // 글자 입력 시 같은 단어의 다음 칸으로 포커스 자동 이동
-      if (selectedWord) {
-        setTimeout(() => moveToNextCell(r, c, 1), 10);
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    if (!val) {
+      setInputs(prev => ({ ...prev, [`${r}-${c}`]: '' }));
+      return;
+    }
+
+    sound.playTap();
+
+    // 1) 2글자 이상 입력된 경우 (연속 타이핑: 예 '글' + 'ㅈ' -> '글ㅈ')
+    if (val.length >= 2) {
+      const firstChar = val[0];
+      const restChar = val.slice(1);
+
+      // 첫 글자가 완성형 한글인 경우 현재 칸에 저장하고 나머지를 다음 칸으로 전달
+      if (isHangulComplete(firstChar)) {
+        setInputs(prev => ({ ...prev, [`${r}-${c}`]: firstChar }));
+        clearWrongCell(r, c);
+
+        if (selectedWord) {
+          moveToNextCell(r, c, 1, restChar);
+        }
+        return;
       }
     }
+
+    const char = val.slice(-1);
     setInputs(prev => ({ ...prev, [`${r}-${c}`]: char }));
-    setWrongCells(prev => {
-      if (prev[`${r}-${c}`]) {
-        const next = { ...prev };
-        delete next[`${r}-${c}`];
-        return next;
+    clearWrongCell(r, c);
+
+    // 2) 단일 자음/모음(ㄱ-ㅎ, ㅏ-ㅣ)인 경우: 아직 조합 중이므로 다음 칸으로 절대 이동하지 않음
+    if (!isHangulComplete(char)) {
+      return;
+    }
+
+    // 3) 완성형 한글 음절인 경우: 사용자가 여유롭게 확인하고 입력할 수 있도록 딜레이 제공
+    if (selectedWord) {
+      // 받침이 있는 경우 (탈, 출, 글, 님 등): 글자가 완성되었으나 여유를 두고 950ms 후 다음 칸으로 이동
+      if (hasBatchim(char)) {
+        timerRef.current = setTimeout(() => {
+          moveToNextCell(r, c, 1);
+        }, 950);
+      } else {
+        // 받침이 없는 경우 (가, 나, 다, 시 등): 사용자가 받침을 칠 수 있도록 1250ms 넉넉히 대기 후 다음 칸으로 이동
+        timerRef.current = setTimeout(() => {
+          moveToNextCell(r, c, 1);
+        }, 1250);
       }
-      return prev;
-    });
+    }
+  };
+
+  const handleCompositionEnd = (r, c, e) => {
+    const val = e.data || inputs[`${r}-${c}`];
+    if (val && isHangulComplete(val.slice(-1)) && selectedWord) {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      const lastChar = val.slice(-1);
+      const delay = hasBatchim(lastChar) ? 950 : 1250;
+      timerRef.current = setTimeout(() => {
+        moveToNextCell(r, c, 1);
+      }, delay);
+    }
   };
 
   const handleKeyDown = (e, r, c) => {
     if (e.key === 'Backspace' && (!inputs[`${r}-${c}`] || inputs[`${r}-${c}`] === '')) {
       if (selectedWord) {
         moveToNextCell(r, c, -1);
+      }
+    } else if (e.key === ' ' || e.key === 'Spacebar' || e.key === 'Enter') {
+      e.preventDefault();
+      if (selectedWord) {
+        moveToNextCell(r, c, 1);
       }
     }
   };
@@ -314,15 +398,25 @@ function App() {
             <button className="sound-btn icon-only" onClick={toggleSound} title={isMuted ? "소리 켜기" : "소리 끄기"}>
               {isMuted ? "🔇" : "🔊"}
             </button>
-            <button className="back-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>🗺️ 맵으로</button>
-            <button className="check-btn" onClick={checkAnswers}>정답 확인 ✨</button>
+            <button className="back-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>
+              <span className="btn-icon">🗺️</span><span className="btn-text"> 맵</span>
+            </button>
+            <button className="check-btn" onClick={checkAnswers}>
+              <span className="btn-icon">✨</span><span className="btn-text"> 확인</span>
+            </button>
             {isChecked && currentLevelIdx < levels.length - 1 && (
-              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentLevelIdx(currentLevelIdx + 1); }}>다음 단계로 ➡️</button>
+              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentLevelIdx(currentLevelIdx + 1); }}>
+                <span className="btn-icon">➡️</span><span className="btn-text"> 다음</span>
+              </button>
             )}
             {isChecked && currentLevelIdx === levels.length - 1 && (
-              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>모험 완료! 🌟</button>
+              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>
+                <span className="btn-icon">🌟</span><span className="btn-text"> 완료</span>
+              </button>
             )}
-            <button className="print-btn" onClick={() => window.print()}>프린트 🖨️</button>
+            <button className="print-btn" onClick={() => window.print()} title="프린트">
+              <span className="btn-icon">🖨️</span><span className="btn-text"> 프린트</span>
+            </button>
           </div>
         </div>
 
@@ -438,10 +532,11 @@ function App() {
                         autoCorrect="off"
                         spellCheck="false"
                         className={wrongCells[`${r}-${c}`] ? 'wrong' : ''}
-                        maxLength={1}
+                        maxLength={2}
                         value={inputs[`${r}-${c}`] || ''}
                         onFocus={() => handleCellClick(r, c, cell)}
                         onChange={(e) => handleInputChange(r, c, e.target.value)}
+                        onCompositionEnd={(e) => handleCompositionEnd(r, c, e)}
                         onKeyDown={(e) => handleKeyDown(e, r, c)}
                       />
                     )}
