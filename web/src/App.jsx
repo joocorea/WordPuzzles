@@ -21,6 +21,7 @@ function App() {
   const [inputs, setInputs] = useState({});
   const [wrongCells, setWrongCells] = useState({});
   const [selectedWord, setSelectedWord] = useState(null);
+  const [selectedCell, setSelectedCell] = useState(null); // 현재 선택된 퍼즐 칸 { r, c }
   const [resultModal, setResultModal] = useState(null);
   const [isChecked, setIsChecked] = useState(false);
   const [emptyColor, setEmptyColor] = useState(PASTEL_COLORS[0]);
@@ -34,10 +35,11 @@ function App() {
   const puzzleData = levels[currentLevelIdx];
 
   useEffect(() => {
-    // Reset inputs and selection on level change
+    // 단계 변경 시 입력값 및 선택 상태 초기화
     setInputs({});
     setWrongCells({});
     setSelectedWord(null);
+    setSelectedCell(null);
     setIsChecked(false);
     setEmptyColor(PASTEL_COLORS[currentLevelIdx % PASTEL_COLORS.length]);
 
@@ -78,10 +80,56 @@ function App() {
     });
   };
 
+  // 퍼즐 칸 클릭 또는 포커스 시 가로/세로 단어 선택 및 교차점 토글 처리
+  const handleCellClick = (r, c, cell) => {
+    if (!cell) return;
+    const isSameCell = selectedCell && selectedCell.r === r && selectedCell.c === c;
+    setSelectedCell({ r, c });
+
+    const acrossW = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'across');
+    const downW = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'down');
+
+    if (acrossW && downW) {
+      if (isSameCell && selectedWord) {
+        // 동일한 교차점 칸을 다시 클릭하면 가로와 세로 단어 간 전환
+        setSelectedWord(selectedWord.id === acrossW.id ? downW : acrossW);
+      } else {
+        // 교차점으로 처음 진입했을 때 기존 방향 유지 혹은 가로 우선 선택
+        if (selectedWord && (selectedWord.id === acrossW.id || selectedWord.id === downW.id)) {
+          // 이미 해당 단어 중 하나가 활성화되어 있으면 유지
+        } else if (selectedWord && selectedWord.direction === 'down') {
+          setSelectedWord(downW);
+        } else {
+          setSelectedWord(acrossW);
+        }
+      }
+    } else {
+      setSelectedWord(acrossW || downW || null);
+    }
+  };
+
+  // 현재 선택된 셀 또는 단어를 기준으로 상단에 노출할 가로·세로 열쇠 정보 조회
+  const getActiveClues = () => {
+    if (selectedCell && grid[selectedCell.r] && grid[selectedCell.r][selectedCell.c]) {
+      const cell = grid[selectedCell.r][selectedCell.c];
+      const acrossWord = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'across');
+      const downWord = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'down');
+      return { acrossWord, downWord };
+    }
+    if (selectedWord) {
+      return {
+        acrossWord: selectedWord.direction === 'across' ? selectedWord : null,
+        downWord: selectedWord.direction === 'down' ? selectedWord : null
+      };
+    }
+    return null;
+  };
+
   const getCellClasses = (r, c, cellData) => {
     let classes = 'cell ';
     if (!cellData) return classes + 'empty';
     if (selectedWord && cellData.words.includes(selectedWord.id)) classes += 'highlight ';
+    if (selectedCell && selectedCell.r === r && selectedCell.c === c) classes += 'cell-active ';
     return classes;
   };
 
@@ -226,23 +274,73 @@ function App() {
       )}
 
       <header className="header">
-        <div className="header-title">
-          <img src="/mascot.png" alt="부캉이" className="mascot-img" />
-          <h1>{puzzleData.title}</h1>
+        <div className="header-top-row">
+          <div className="header-title">
+            <img src="/mascot.png" alt="부캉이" className="mascot-img" />
+            <h1>{puzzleData.title}</h1>
+          </div>
+          <div className="header-controls no-print">
+            <button className="sound-btn icon-only" onClick={toggleSound} title={isMuted ? "소리 켜기" : "소리 끄기"}>
+              {isMuted ? "🔇" : "🔊"}
+            </button>
+            <button className="back-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>🗺️ 맵으로</button>
+            <button className="check-btn" onClick={checkAnswers}>정답 확인 ✨</button>
+            {isChecked && currentLevelIdx < levels.length - 1 && (
+              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentLevelIdx(currentLevelIdx + 1); }}>다음 단계로 ➡️</button>
+            )}
+            {isChecked && currentLevelIdx === levels.length - 1 && (
+              <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>모험 완료! 🌟</button>
+            )}
+            <button className="print-btn" onClick={() => window.print()}>프린트 🖨️</button>
+          </div>
         </div>
-        <div className="header-controls no-print">
-          <button className="sound-btn icon-only" onClick={toggleSound} title={isMuted ? "소리 켜기" : "소리 끄기"}>
-            {isMuted ? "🔇" : "🔊"}
-          </button>
-          <button className="back-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>🗺️ 맵으로</button>
-          <button className="check-btn" onClick={checkAnswers}>정답 확인 ✨</button>
-          {isChecked && currentLevelIdx < levels.length - 1 && (
-            <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentLevelIdx(currentLevelIdx + 1); }}>다음 단계로 ➡️</button>
-          )}
-          {isChecked && currentLevelIdx === levels.length - 1 && (
-            <button className="next-level-btn" onClick={() => { sound.playButton(); setCurrentView('map'); }}>모험 완료! 🌟</button>
-          )}
-          <button className="print-btn" onClick={() => window.print()}>프린트 🖨️</button>
+
+        {/* 헤더 2번째 행: 가로 100% 와이드 실시간 열쇠 배너 (텍스트 잘림 없음) */}
+        <div className="top-clues-banner wide no-print">
+          {(() => {
+            const clues = getActiveClues();
+            if (!clues || (!clues.acrossWord && !clues.downWord)) {
+              return (
+                <div className="top-clues-placeholder">
+                  <span>💡 퍼즐 칸을 누르면 가로·세로 열쇠가 여기에 시원하게 나타나요!</span>
+                </div>
+              );
+            }
+            return (
+              <div className="top-clues-list wide">
+                {clues.acrossWord && (
+                  <div 
+                    className={`top-clue-item across ${selectedWord?.id === clues.acrossWord.id ? 'active' : ''}`}
+                    onClick={() => { sound.playTap(); setSelectedWord(clues.acrossWord); }}
+                    title="클릭하면 가로 단어로 입력 전환됩니다"
+                  >
+                    <span className="top-clue-badge across">
+                      <span className="arrow-box across mini">→</span>
+                      가로 {clues.acrossWord.num || clues.acrossWord.id}
+                    </span>
+                    <span className="top-clue-text">
+                      {renderClue(clues.acrossWord.clue)}
+                    </span>
+                  </div>
+                )}
+                {clues.downWord && (
+                  <div 
+                    className={`top-clue-item down ${selectedWord?.id === clues.downWord.id ? 'active' : ''}`}
+                    onClick={() => { sound.playTap(); setSelectedWord(clues.downWord); }}
+                    title="클릭하면 세로 단어로 입력 전환됩니다"
+                  >
+                    <span className="top-clue-badge down">
+                      <span className="arrow-box down mini">↓</span>
+                      세로 {clues.downWord.num || clues.downWord.id}
+                    </span>
+                    <span className="top-clue-text">
+                      {renderClue(clues.downWord.clue)}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </header>
 
@@ -256,7 +354,11 @@ function App() {
                 <li 
                   key={w.id} 
                   className={selectedWord?.id === w.id ? 'active' : ''}
-                  onClick={() => setSelectedWord(w)}
+                  onClick={() => {
+                    sound.playTap();
+                    setSelectedWord(w);
+                    setSelectedCell({ r: w.row, c: w.col });
+                  }}
                 >
                   <span className="clue-num across">{w.num || w.id}</span> {renderClue(w.clue)}
                 </li>
@@ -270,7 +372,11 @@ function App() {
                 <li 
                   key={w.id} 
                   className={selectedWord?.id === w.id ? 'active' : ''}
-                  onClick={() => setSelectedWord(w)}
+                  onClick={() => {
+                    sound.playTap();
+                    setSelectedWord(w);
+                    setSelectedCell({ r: w.row, c: w.col });
+                  }}
                 >
                   <span className="clue-num down">{w.num || w.id}</span> {renderClue(w.clue)}
                 </li>
@@ -289,7 +395,7 @@ function App() {
                     key={`${r}-${c}`} 
                     className={getCellClasses(r, c, cell)}
                     style={!cell ? { backgroundColor: emptyColor } : {}}
-                    onClick={() => cell && setSelectedWord(puzzleData.words.find(w => w.id === cell.words[0]))}
+                    onClick={() => handleCellClick(r, c, cell)}
                   >
                     {cell && cell.number && <span className={`cell-number ${cell.direction}`}>{cell.number}</span>}
                     {cell && (
@@ -298,6 +404,7 @@ function App() {
                         className={wrongCells[`${r}-${c}`] ? 'wrong' : ''}
                         maxLength={1}
                         value={inputs[`${r}-${c}`] || ''}
+                        onFocus={() => handleCellClick(r, c, cell)}
                         onChange={(e) => handleInputChange(r, c, e.target.value)}
                       />
                     )}
