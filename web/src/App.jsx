@@ -35,6 +35,8 @@ function App() {
   const [wrongCells, setWrongCells] = useState({});
   const [selectedWord, setSelectedWord] = useState(null);
   const [selectedCell, setSelectedCell] = useState(null); // 현재 선택된 퍼즐 칸 { r, c }
+  const [isTooltipDismissed, setIsTooltipDismissed] = useState(false); // 힌트 텍스트 클릭 시 닫힘 상태
+  const [isDismissing, setIsDismissing] = useState(false); // 힌트 닫힘(Fade-out) 애니메이션 진행 여부
   const [resultModal, setResultModal] = useState(null);
   const [isChecked, setIsChecked] = useState(false);
   const [emptyColor, setEmptyColor] = useState(PASTEL_COLORS[0]);
@@ -66,6 +68,8 @@ function App() {
     setWrongCells({});
     setSelectedWord(null);
     setSelectedCell(null);
+    setIsTooltipDismissed(false);
+    setIsDismissing(false);
     setIsChecked(false);
     setEmptyColor(PASTEL_COLORS[currentLevelIdx % PASTEL_COLORS.length]);
 
@@ -207,6 +211,8 @@ function App() {
     if (!cell) return;
     const isSameCell = selectedCell && selectedCell.r === r && selectedCell.c === c;
     setSelectedCell({ r, c });
+    setIsTooltipDismissed(false); // 셀을 클릭하거나 다시 클릭하면 힌트 말풍선 다시 표시
+    setIsDismissing(false);
 
     const acrossW = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'across');
     const downW = puzzleData.words.find(w => cell.words.includes(w.id) && w.direction === 'down');
@@ -228,6 +234,18 @@ function App() {
     } else {
       setSelectedWord(acrossW || downW || null);
     }
+  };
+
+  // 힌트 툴팁 닫기 처리 (부드러운 Fade-Out 애니메이션 후 언마운트)
+  const handleDismissTooltip = (e) => {
+    if (e) e.stopPropagation();
+    if (isDismissing) return;
+    sound.playButton();
+    setIsDismissing(true);
+    setTimeout(() => {
+      setIsTooltipDismissed(true);
+      setIsDismissing(false);
+    }, 180);
   };
 
   // 현재 선택된 셀 또는 단어를 기준으로 상단에 노출할 가로·세로 열쇠 정보 조회
@@ -420,53 +438,6 @@ function App() {
           </div>
         </div>
 
-        {/* 헤더 2번째 행: 가로 100% 와이드 실시간 열쇠 배너 (텍스트 잘림 없음) */}
-        <div className="top-clues-banner wide no-print">
-          {(() => {
-            const clues = getActiveClues();
-            if (!clues || (!clues.acrossWord && !clues.downWord)) {
-              return (
-                <div className="top-clues-placeholder">
-                  <span>💡 퍼즐 칸을 누르면 가로·세로 열쇠가 여기에 시원하게 나타나요!</span>
-                </div>
-              );
-            }
-            return (
-              <div className="top-clues-list wide">
-                {clues.acrossWord && (
-                  <div 
-                    className={`top-clue-item across ${selectedWord?.id === clues.acrossWord.id ? 'active' : ''}`}
-                    onClick={() => { sound.playTap(); setSelectedWord(clues.acrossWord); }}
-                    title="클릭하면 가로 단어로 입력 전환됩니다"
-                  >
-                    <span className="top-clue-badge across">
-                      <span className="arrow-box across mini">→</span>
-                      가로 {clues.acrossWord.num || clues.acrossWord.id}
-                    </span>
-                    <span className="top-clue-text">
-                      {renderClue(clues.acrossWord.clue)}
-                    </span>
-                  </div>
-                )}
-                {clues.downWord && (
-                  <div 
-                    className={`top-clue-item down ${selectedWord?.id === clues.downWord.id ? 'active' : ''}`}
-                    onClick={() => { sound.playTap(); setSelectedWord(clues.downWord); }}
-                    title="클릭하면 세로 단어로 입력 전환됩니다"
-                  >
-                    <span className="top-clue-badge down">
-                      <span className="arrow-box down mini">↓</span>
-                      세로 {clues.downWord.num || clues.downWord.id}
-                    </span>
-                    <span className="top-clue-text">
-                      {renderClue(clues.downWord.clue)}
-                    </span>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
-        </div>
       </header>
 
       <div className="main-content">
@@ -483,6 +454,8 @@ function App() {
                     sound.playTap();
                     setSelectedWord(w);
                     setSelectedCell({ r: w.row, c: w.col });
+                    setIsTooltipDismissed(false);
+                    setIsDismissing(false);
                   }}
                 >
                   <span className="clue-num across">{w.num || w.id}</span> {renderClue(w.clue)}
@@ -501,6 +474,8 @@ function App() {
                     sound.playTap();
                     setSelectedWord(w);
                     setSelectedCell({ r: w.row, c: w.col });
+                    setIsTooltipDismissed(false);
+                    setIsDismissing(false);
                   }}
                 >
                   <span className="clue-num down">{w.num || w.id}</span> {renderClue(w.clue)}
@@ -540,6 +515,71 @@ function App() {
                         onKeyDown={(e) => handleKeyDown(e, r, c)}
                       />
                     )}
+                    {/* 같은 단어일 때는 단어의 시작 칸(word.row, word.col)에 툴팁 위치를 안정적으로 고정하여 위치 유지 */}
+                    {cell && !isTooltipDismissed && (() => {
+                      const tooltipAnchor = selectedWord ? { r: selectedWord.row, c: selectedWord.col } : selectedCell;
+                      if (!tooltipAnchor || tooltipAnchor.r !== r || tooltipAnchor.c !== c) return null;
+
+                      const clues = getActiveClues();
+                      if (!clues || (!clues.acrossWord && !clues.downWord)) return null;
+                      const alignClass = c <= 1 ? 'align-left' : c >= 5 ? 'align-right' : 'align-center';
+                      return (
+                        <div 
+                          key={selectedWord ? `tooltip-${selectedWord.id}` : `tooltip-${r}-${c}`}
+                          className={`cell-tooltip placement-top ${alignClass} ${isDismissing ? 'fade-out' : 'fade-in'} no-print`}
+                          onClick={handleDismissTooltip}
+                          onMouseDown={(e) => e.preventDefault()}
+                          title="터치하면 힌트가 닫힙니다"
+                        >
+                          <div className="tooltip-arrow" />
+                          <div className="tooltip-content">
+                            {clues.acrossWord && (
+                              <div 
+                                className={`tooltip-clue-item across ${selectedWord?.id === clues.acrossWord.id ? 'active' : ''}`}
+                                onClick={handleDismissTooltip}
+                              >
+                                <span 
+                                  className="tooltip-badge across"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    sound.playTap();
+                                    setSelectedWord(clues.acrossWord);
+                                  }}
+                                  title="클릭하면 가로 단어로 입력 전환"
+                                >
+                                  <span className="arrow-box across mini">→</span> 가로 {clues.acrossWord.num || clues.acrossWord.id}
+                                </span>
+                                <span className="tooltip-clue-text">
+                                  {renderClue(clues.acrossWord.clue)}
+                                </span>
+                              </div>
+                            )}
+                            {clues.downWord && (
+                              <div 
+                                className={`tooltip-clue-item down ${selectedWord?.id === clues.downWord.id ? 'active' : ''}`}
+                                onClick={handleDismissTooltip}
+                              >
+                                <span 
+                                  className="tooltip-badge down"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    sound.playTap();
+                                    setSelectedWord(clues.downWord);
+                                  }}
+                                  title="클릭하면 세로 단어로 입력 전환"
+                                >
+                                  <span className="arrow-box down mini">↓</span> 세로 {clues.downWord.num || clues.downWord.id}
+                                </span>
+                                <span className="tooltip-clue-text">
+                                  {renderClue(clues.downWord.clue)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="tooltip-dismiss-hint">✕ 터치하면 닫혀요</div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
